@@ -43,6 +43,24 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			while (doc_tokenizer.hasMoreTokens()) {
+				String token = doc_tokenizer.nextToken().trim();
+				if (token.length() > 0) {
+					// 统计每个单词在当前行中的出现次数
+					Integer count = word_set.get(token);
+					if (count == null) {
+						count = Integer.valueOf(1);
+					} else {
+						count = Integer.valueOf(count.intValue() + 1);
+					}
+					word_set.put(token, count);
+				}
+			}
+			
+			// 输出每个单词及其在当前行的出现次数
+			for (Map.Entry entry : word_set.entrySet()) {
+				context.write(new Text((String) entry.getKey()), new IntWritable(((Integer) entry.getValue()).intValue()));
+			}
 		}
 	}
 
@@ -56,6 +74,11 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			int sum = 0;
+			for (IntWritable value : values) {
+				sum += value.get();
+			}
+			context.write(key, new IntWritable(sum));
 		}
 	}
 
@@ -75,6 +98,26 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 为每个单词创建一个stripe
+			for (String word : sorted_word_set) {
+				MapWritable stripe = new MapWritable();
+				
+				// 为每对单词创建一个条目
+				for (String otherWord : sorted_word_set) {
+					// 不与自己组对
+					if (!word.equals(otherWord)) {
+						// 按字母顺序确保只输出一次每个词对
+						if (word.compareTo(otherWord) < 0) {
+							stripe.put(new Text(otherWord), new IntWritable(1));
+						}
+					}
+				}
+				
+				// 只输出非空的stripe
+				if (!stripe.isEmpty()) {
+					context.write(new Text(word), stripe);
+				}
+			}
 		}
 	}
 
@@ -89,6 +132,24 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			MapWritable combined = new MapWritable();
+
+			// 合并所有stripe
+			for (MapWritable value : values) {
+				for (Writable otherWord : value.keySet()) {
+					Text word = (Text) otherWord;
+					IntWritable count = (IntWritable) value.get(word);
+					
+					IntWritable existingCount = (IntWritable) combined.get(word);
+					if (existingCount == null) {
+						combined.put(word, count);
+					} else {
+						combined.put(word, new IntWritable(existingCount.get() + count.get()));
+					}
+				}
+			}
+
+			context.write(key, combined);
 		}
 	}
 
@@ -142,6 +203,48 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 合并所有stripe
+			MapWritable cooccurrences = new MapWritable();
+			for (MapWritable value : values) {
+				for (Writable otherWord : value.keySet()) {
+					Text word = (Text) otherWord;
+					IntWritable count = (IntWritable) value.get(word);
+					
+					IntWritable existingCount = (IntWritable) cooccurrences.get(word);
+					if (existingCount == null) {
+						cooccurrences.put(word, count);
+					} else {
+						cooccurrences.put(word, new IntWritable(existingCount.get() + count.get()));
+					}
+				}
+			}
+
+			String leftWord = key.toString();
+			Integer leftFreq = word_total_map.get(leftWord);
+
+			// 计算相关系数并输出
+			for (Writable rightWordWritable : cooccurrences.keySet()) {
+				Text rightWordText = (Text) rightWordWritable;
+				String rightWord = rightWordText.toString();
+				Integer rightFreq = word_total_map.get(rightWord);
+				
+				if (leftFreq != null && rightFreq != null && leftFreq.intValue() > 0 && rightFreq.intValue() > 0) {
+					int pairCount = ((IntWritable) cooccurrences.get(rightWordText)).get();
+					
+					// 计算相关系数
+					double correlation = (double) pairCount / (leftFreq.intValue() * rightFreq.intValue());
+					
+					// 输出按字母顺序排列的词对
+					PairOfStrings pair;
+					if (leftWord.compareTo(rightWord) <= 0) {
+						pair = new PairOfStrings(leftWord, rightWord);
+					} else {
+						pair = new PairOfStrings(rightWord, leftWord);
+					}
+					
+					context.write(pair, new DoubleWritable(correlation));
+				}
+			}
 		}
 	}
 

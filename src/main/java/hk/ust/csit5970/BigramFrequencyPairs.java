@@ -3,6 +3,9 @@ package hk.ust.csit5970;
 import java.io.IOException;
 import java.util.Arrays;
 
+//添加
+import java.util.HashMap;
+
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -53,6 +56,24 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			if (words.length > 1) {
+				for (int i = 0; i < words.length - 1; i++) {
+					String w1 = words[i];
+					String w2 = words[i + 1];
+					
+					if (w1.length() == 0 || w2.length() == 0) {
+						continue;
+					}
+					
+					// 输出 (w1, *) -> 1 用于计算w1的总数
+					BIGRAM.set(w1, "");
+					context.write(BIGRAM, ONE);
+					
+					// 输出 (w1, w2) -> 1 用于计算bigram频率
+					BIGRAM.set(w1, w2);
+					context.write(BIGRAM, ONE);
+				}
+			}
 		}
 	}
 
@@ -64,6 +85,9 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 
 		// Reuse objects.
 		private final static FloatWritable VALUE = new FloatWritable();
+		
+		// 用于存储左词的计数
+		private HashMap<String, Integer> marginalCounts = new HashMap<String, Integer>();
 
 		@Override
 		public void reduce(PairOfStrings key, Iterable<IntWritable> values,
@@ -71,6 +95,29 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 计算当前key的总计数
+			int sum = 0;
+			for (IntWritable value : values) {
+				sum += value.get();
+			}
+			
+			String left = key.getLeftElement();
+			String right = key.getRightElement();
+			
+			if (right.equals("")) {
+				// 如果是边际计数(w, *)，存储到HashMap中
+				marginalCounts.put(left, sum);
+				VALUE.set(sum);
+				context.write(key, VALUE);
+			} else {
+				// 否则是bigram计数，从HashMap中获取边际计数
+				Integer marginalCount = marginalCounts.get(left);
+				if (marginalCount != null && marginalCount > 0) {
+					float relativeFreq = (float) sum / marginalCount;
+					VALUE.set(relativeFreq);
+					context.write(key, VALUE);
+				}
+			}
 		}
 	}
 	
@@ -84,6 +131,13 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 合并相同key的计数
+			int sum = 0;
+			for (IntWritable value : values) {
+				sum += value.get();
+			}
+			SUM.set(sum);
+			context.write(key, SUM);
 		}
 	}
 

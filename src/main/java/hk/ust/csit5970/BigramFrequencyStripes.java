@@ -54,6 +54,32 @@ public class BigramFrequencyStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			if (words.length > 1) {
+				for (int i = 0; i < words.length - 1; i++) {
+					String current = words[i];
+					if (current.length() == 0) {
+						continue;
+					}
+					
+					// 设置当前词为key
+					KEY.set(current);
+					
+					// 清空条纹，准备加入后续词
+					STRIPE.clear();
+					
+					// 当前词右侧的词加入条纹
+					String next = words[i + 1];
+					if (next.length() > 0) {
+						STRIPE.increment(next);
+					}
+					
+					// 特殊条目记录总数
+					STRIPE.put("", 1);
+					
+					// 输出 (当前词, [后续词->计数, ""->"总数"])
+					context.write(KEY, STRIPE);
+				}
+			}
 		}
 	}
 
@@ -75,6 +101,52 @@ public class BigramFrequencyStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 清空汇总条纹
+			SUM_STRIPES.clear();
+
+			// 遍历所有条纹并合并
+			for (HashMapStringIntWritable stripe : stripes) {
+				for (Map.Entry<String, Integer> entry : stripe.entrySet()) {
+					String term = entry.getKey();
+					int count = entry.getValue();
+					
+					// 累加计数到汇总条纹
+					SUM_STRIPES.increment(term, count);
+				}
+			}
+			
+			// 获取当前词作为左词的总出现次数
+			int totalCount = 0;
+			if (SUM_STRIPES.containsKey("")) {
+				totalCount = SUM_STRIPES.get("");
+			}
+			
+			// 设置当前词
+			String leftWord = key.toString();
+			
+			// 输出当前词的总数
+			BIGRAM.set(leftWord, "");
+			FREQ.set((float) totalCount);
+			context.write(BIGRAM, FREQ);
+			
+			// 计算并输出每个右词的相对频率
+			for (Map.Entry<String, Integer> entry : SUM_STRIPES.entrySet()) {
+				String rightWord = entry.getKey();
+				int count = entry.getValue();
+				
+				// 跳过特殊键""
+				if (rightWord.equals("")) {
+					continue;
+				}
+				
+				// 计算相对频率
+				float frequency = (float) count / totalCount;
+				
+				// 输出 (左词,右词) -> 相对频率
+				BIGRAM.set(leftWord, rightWord);
+				FREQ.set(frequency);
+				context.write(BIGRAM, FREQ);
+			}
 		}
 	}
 
@@ -94,6 +166,22 @@ public class BigramFrequencyStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 清空汇总条纹
+			SUM_STRIPES.clear();
+
+			// 遍历所有条纹并合并
+			for (HashMapStringIntWritable stripe : stripes) {
+				for (Map.Entry<String, Integer> entry : stripe.entrySet()) {
+					String term = entry.getKey();
+					int count = entry.getValue();
+					
+					// 累加计数到汇总条纹
+					SUM_STRIPES.increment(term, count);
+				}
+			}
+			
+			// 输出合并后的条纹
+			context.write(key, SUM_STRIPES);
 		}
 	}
 

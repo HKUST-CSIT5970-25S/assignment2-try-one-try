@@ -53,6 +53,24 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 统计每个单词在当前行的出现次数
+			while (doc_tokenizer.hasMoreTokens()) {
+				String token = doc_tokenizer.nextToken().trim();
+				if (token.length() > 0) {
+					// 将每个单词存储到HashMap中，并累加出现次数
+					Integer count = word_set.get(token);
+					if (count == null) {
+						word_set.put(token, 1);
+					} else {
+						word_set.put(token, count + 1);
+					}
+				}
+			}
+			
+			// 输出每个单词和其在当前行的出现次数
+			for (Map.Entry<String, Integer> entry : word_set.entrySet()) {
+				context.write(new Text(entry.getKey()), new IntWritable(entry.getValue()));
+			}
 		}
 	}
 
@@ -66,6 +84,14 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 计算当前单词的总频率
+			int sum = 0;
+			for (IntWritable value : values) {
+				sum += value.get();
+			}
+			
+			// 输出单词及其总频率
+			context.write(key, new IntWritable(sum));
 		}
 	}
 
@@ -81,6 +107,32 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 存储当前行中的所有不同单词
+			Set<String> uniqueWords = new HashSet<String>();
+			while (doc_tokenizer.hasMoreTokens()) {
+				String token = doc_tokenizer.nextToken().trim();
+				if (token.length() > 0) {
+					uniqueWords.add(token);
+				}
+			}
+			
+			// 将单词集合转换为数组并排序
+			String[] words = uniqueWords.toArray(new String[uniqueWords.size()]);
+			Arrays.sort(words);
+			
+			// 生成所有可能的词对，确保词对按字母顺序排列
+			for (int i = 0; i < words.length - 1; i++) {
+				for (int j = i + 1; j < words.length; j++) {
+					// 确保词对按字母顺序排列
+					if (words[i].compareTo(words[j]) <= 0) {
+						PairOfStrings pair = new PairOfStrings(words[i], words[j]);
+						context.write(pair, new IntWritable(1));
+					} else {
+						PairOfStrings pair = new PairOfStrings(words[j], words[i]);
+						context.write(pair, new IntWritable(1));
+					}
+				}
+			}
 		}
 	}
 
@@ -93,6 +145,14 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 合并相同词对的计数
+			int sum = 0;
+			for (IntWritable value : values) {
+				sum += value.get();
+			}
+			
+			// 输出合并后的结果
+			context.write(key, new IntWritable(sum));
 		}
 	}
 
@@ -145,6 +205,23 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			// 计算词对出现的总次数
+			int pairCount = 0;
+			for (IntWritable value : values) {
+				pairCount += value.get();
+			}
+			
+			// 获取词对中两个单词的频率
+			String leftWord = key.getLeftElement();
+			String rightWord = key.getRightElement();
+			Integer leftFreq = word_total_map.get(leftWord);
+			Integer rightFreq = word_total_map.get(rightWord);
+			
+			// 计算相关系数 COR(A, B) = Freq(A, B) / (Freq(A) * Freq(B))
+			if (leftFreq != null && rightFreq != null && leftFreq > 0 && rightFreq > 0) {
+				double correlation = (double) pairCount / (leftFreq * rightFreq);
+				context.write(key, new DoubleWritable(correlation));
+			}
 		}
 	}
 
